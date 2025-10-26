@@ -1,0 +1,303 @@
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
+import joblib
+
+app = Flask(__name__)
+model = joblib.load("xgmodel.pkl")
+
+# Homepage route to render HTML form
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+# Prediction route
+@app.route('/predict', methods=['POST'])
+def predict():
+    # Get form data
+    user_data = {
+        'year': [2020],
+        'gender': [request.form['gender']],
+        'age': [int(request.form['age'])],
+        'no_of_days_subscribed': [int(request.form['no_of_days_subscribed'])],
+        'multi_screen': [request.form['multi_screen']],
+        'mail_subscribed': [request.form['mail_subscribed']],
+        'weekly_mins_watched': [int(request.form['weekly_mins_watched'])],
+        'minimum_daily_mins': [int(request.form['minimum_daily_mins'])],
+        'maximum_daily_mins': [int(request.form['maximum_daily_mins'])],
+        'weekly_max_night_mins': [int(request.form['weekly_max_night_mins'])],
+        'videos_watched': [int(request.form['videos_watched'])],
+        'maximum_days_inactive': [int(request.form['maximum_days_inactive'])],
+        'customer_support_calls': [int(request.form['customer_support_calls'])]
+    }
+
+    # Convert to DataFrame
+    user_df = pd.DataFrame(user_data)
+
+    # Apply one-hot encoding (same as training)
+    user_df = pd.get_dummies(user_df, columns=['gender', 'multi_screen', 'mail_subscribed'], drop_first=True)
+
+    # Ensure correct columns
+    expected_columns = [
+        'age', 'no_of_days_subscribed', 'weekly_mins_watched', 'minimum_daily_mins',
+        'maximum_daily_mins', 'weekly_max_night_mins', 'videos_watched',
+        'maximum_days_inactive', 'customer_support_calls', 'gender_Male',
+        'multi_screen_yes', 'mail_subscribed_yes'
+    ]
+    for col in expected_columns:
+        if col not in user_df.columns:
+            user_df[col] = 0
+
+    # Reorder columns
+    user_df = user_df[expected_columns]
+
+    # Make prediction
+    prediction = model.predict(user_df)
+    result = "Leaving" if prediction[0] == 1 else "Not Leaving"
+
+    # Return result to the frontend
+    return render_template('index.html', prediction_text=f"Prediction: {result}")
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+# from flask import Flask, render_template, request, redirect, session, jsonify, url_for
+# from flask_sqlalchemy import SQLAlchemy
+# from werkzeug.security import generate_password_hash, check_password_hash
+# import pandas as pd
+# import joblib
+# import os
+
+# app = Flask(__name__)
+# app.secret_key = os.urandom(24)
+
+# # Load ML model
+# model = joblib.load("xgmodel.pkl")
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///churn.db'
+# # Database Configuration
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# db = SQLAlchemy(app)
+
+# # User Model
+# class User(db.Model):
+#     id = db.Column(db.Integer, primary_key=True)
+#     username = db.Column(db.String(50), unique=True, nullable=False)
+#     password = db.Column(db.String(200), nullable=False)
+
+# # Model for storing user inputs & predictions
+# class UserInput(db.Model):
+#     id = db.Column(db.Integer, primary_key=True)
+#     username = db.Column(db.String(50), nullable=False)
+#     gender = db.Column(db.String(10), nullable=False)
+#     age = db.Column(db.Integer, nullable=False)
+#     no_of_days_subscribed = db.Column(db.Integer, nullable=False)
+#     multi_screen = db.Column(db.String(5), nullable=False)
+#     mail_subscribed = db.Column(db.String(5), nullable=False)
+#     weekly_mins_watched = db.Column(db.Integer, nullable=False)
+#     minimum_daily_mins = db.Column(db.Integer, nullable=False)
+#     maximum_daily_mins = db.Column(db.Integer, nullable=False)
+#     weekly_max_night_mins = db.Column(db.Integer, nullable=False)
+#     videos_watched = db.Column(db.Integer, nullable=False)
+#     maximum_days_inactive = db.Column(db.Integer, nullable=False)
+#     customer_support_calls = db.Column(db.Integer, nullable=False)
+#     prediction = db.Column(db.String(20), nullable=False)
+
+# # Create tables
+# with app.app_context():
+#     db.create_all()
+
+# # Home
+# @app.route('/')
+# def home():
+#     return render_template('base.html', username=session.get('user'))
+
+# # Register
+# @app.route('/register', methods=['GET', 'POST'])
+# def register():
+#     if request.method == 'POST':
+#         username = request.form['username']
+#         password = request.form['password']
+
+#         if User.query.filter_by(username=username).first():
+#             return render_template('register.html', error="User already exists!")
+
+#         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+#         db.session.add(User(username=username, password=hashed_password))
+#         db.session.commit()
+#         return redirect('/login')
+
+#     return render_template('register.html')
+
+# # Login
+# @app.route('/login', methods=['GET', 'POST'])
+# def login():
+#     if request.method == 'POST':
+#         username = request.form['username']
+#         password = request.form['password']
+
+#         user = User.query.filter_by(username=username).first()
+#         if user and check_password_hash(user.password, password):
+#             session['user'] = username
+#             return redirect('/dashboard')
+#         return render_template('login.html', error="Invalid username or password!")
+
+#     return render_template('login.html')
+
+# # Dashboard
+# @app.route('/dashboard')
+# def dashboard():
+#     if 'user' not in session:
+#         return redirect('/login')
+#     return render_template('dashboard.html', username=session['user'])
+
+# # Logout
+# @app.route('/logout')
+# def logout():
+#     session.pop('user', None)
+#     return redirect('/')
+
+# @app.route('/predict', methods=['GET', 'POST'])
+# def predict():
+#     if 'user' not in session:
+#         return redirect('/login')
+
+#     if request.method == 'POST':
+#         try:
+#             # Collect user input
+#             user_data = {
+#                 'age': int(request.form['age']),
+#                 'no_of_days_subscribed': int(request.form['no_of_days_subscribed']),
+#                 'weekly_mins_watched': int(request.form['weekly_mins_watched']),
+#                 'minimum_daily_mins': int(request.form['minimum_daily_mins']),
+#                 'maximum_daily_mins': int(request.form['maximum_daily_mins']),
+#                 'weekly_max_night_mins': int(request.form['weekly_max_night_mins']),
+#                 'videos_watched': int(request.form['videos_watched']),
+#                 'maximum_days_inactive': int(request.form['maximum_days_inactive']),
+#                 'customer_support_calls': int(request.form['customer_support_calls']),
+#                 'gender': request.form['gender'],
+#                 'multi_screen': request.form['multi_screen'],
+#                 'mail_subscribed': request.form['mail_subscribed']
+#             }
+
+#             # Define churn risk thresholds (adjust these based on analysis)
+#             high_churn_risk = (
+#                 user_data['no_of_days_subscribed'] < 30 or  # Very new users
+#                 user_data['weekly_mins_watched'] < 100 or  # Low engagement
+#                 user_data['maximum_days_inactive'] > 10 or  # Long inactivity
+#                 user_data['customer_support_calls'] > 2    # High complaints
+#             )
+
+#             # If user meets high churn conditions, manually set prediction to "Leaving"
+#             if high_churn_risk:
+#                 result = "Leaving"
+#             else:
+#                 # Convert user data into a DataFrame
+#                 user_df = pd.DataFrame([user_data])
+
+#                 # One-hot encoding for categorical features
+#                 user_df = pd.get_dummies(user_df, columns=['gender', 'multi_screen', 'mail_subscribed'], drop_first=True)
+
+#                 # Expected model columns
+#                 expected_columns = [
+#                     'age', 'no_of_days_subscribed', 'weekly_mins_watched', 'minimum_daily_mins',
+#                     'maximum_daily_mins', 'weekly_max_night_mins', 'videos_watched',
+#                     'maximum_days_inactive', 'customer_support_calls', 'gender_Male',
+#                     'multi_screen_yes', 'mail_subscribed_yes'
+#                 ]
+
+#                 # Ensure all expected columns exist
+#                 for col in expected_columns:
+#                     if col not in user_df.columns:
+#                         user_df[col] = 0
+
+#                 # Reorder columns
+#                 user_df = user_df[expected_columns]
+
+#                 # Make prediction
+#                 prediction = model.predict(user_df)
+#                 result = "Not Leaving" if prediction[0] == 1 else "Leaving"
+
+#             # Save to database
+#             new_entry = UserInput(
+#                 username=session['user'],
+#                 gender=user_data['gender'],
+#                 age=user_data['age'],
+#                 no_of_days_subscribed=user_data['no_of_days_subscribed'],
+#                 multi_screen=user_data['multi_screen'],
+#                 mail_subscribed=user_data['mail_subscribed'],
+#                 weekly_mins_watched=user_data['weekly_mins_watched'],
+#                 minimum_daily_mins=user_data['minimum_daily_mins'],
+#                 maximum_daily_mins=user_data['maximum_daily_mins'],
+#                 weekly_max_night_mins=user_data['weekly_max_night_mins'],
+#                 videos_watched=user_data['videos_watched'],
+#                 maximum_days_inactive=user_data['maximum_days_inactive'],
+#                 customer_support_calls=user_data['customer_support_calls'],
+#                 prediction=result
+#             )
+#             db.session.add(new_entry)
+#             db.session.commit()
+
+#             return render_template('index.html', username=session['user'], prediction_text=f"Prediction: {result}")
+
+#         except Exception as e:
+#             return jsonify({"error": str(e)})
+
+#     return render_template('predict.html', result=None)
+# # Run App
+# if __name__== "__main__":
+#     app.run(debug=True)
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand btn btn-primary" href="/">OTT Churn Prediction</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="navbar-brand btn btn-primary" href="/">Home</a></li>
+                    <li class="nav-item"><a class="navbar-brand btn btn-primary" href="/predict">Make Prediction</a></li>
+                    <li class="nav-item"><a class="navbar-brand btn btn-primary" href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-5 text-center">
+        <div class="card shadow-lg p-4">
+            <h2 class="text-primary">Welcome, {{ username }} 👋</h2>
+            <p class="text-muted">Use this dashboard to view your predictions and manage your account.</p>
+
+            <!-- Prediction Result -->
+            {% if prediction_text %}
+            <div class="alert alert-info mt-4">
+                <h4>Prediction: <strong>{{ predictions }}</strong></h4>
+            </div>
+            {% else %}
+            <p class="text-secondary mt-3">No predictions made yet.</p>
+            {% endif %}
+
+            <a href="/predict" class="btn btn-success mt-3">Make a New Prediction</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
